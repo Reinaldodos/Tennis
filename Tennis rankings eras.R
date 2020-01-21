@@ -1,10 +1,10 @@
 pacman::p_load(pacman, data.table, rvest, tidyverse, rio, lubridate)
-"~/R/Anime/" %>% list.files(ignore.case = T, pattern = "fonction", full.names = T, recursive = T) %>%
-  map(source)
 
 url = "https://www.atptour.com/en/rankings/singles"
 
-Start = ("2019-02-11" %>% ymd)
+IMA = now() %>% as_date()
+IMA = IMA - ddays(0:7)
+Start = IMA[lubridate::wday(IMA) == 2]
 N = 0:2500
 
 Liste = Start - N*ddays(7)
@@ -13,21 +13,23 @@ Liste =
   data.table(Week = Liste) %>%
   mutate(url = str_c(url, "?rankDate=", Week, "&rankRange=0-100"))
 
-FAITCHE = compose(flatten_df, html_table, read_html)
-safe_FAITCHE = safely(FAITCHE)
+safe_FAITCHE = safely(read_html)
 
 input =
-  Liste$url %>% set_names() %>%
+  Liste$url %>% set_names() %>% 
   map(safe_FAITCHE)
 
 output =
   input %>%
   map(compact) %>%
-  transpose()
+  purrr::transpose()
 
 
 test =
   output$result %>%
+  compact %>%
+  map(html_table) %>%
+  map(flatten_df) %>%
   map(mutate_all, as.character) %>%
   bind_rows(.id = "url")
 
@@ -38,18 +40,20 @@ output =
     Ranking = Ranking %>% str_remove_all(pattern = "[^[0-9]]") %>% as.numeric()
   ) %>% data.table()
 
-Elite = output %>% filter(Ranking == 1)  %>% pull(Player) %>% unique()
+Elite = output %>% filter(Ranking <= 1)  %>% pull(Player) %>% unique()
 GOD_start =
   output %>%
+  group_by(Player) %>% filter(Week == min(Week)) %>% 
   filter(str_detect(string = Player, pattern = "Federer")) %>%
-  group_by(Player) %>% filter(Week == min(Week)) %>% pull(Week)
+  pull(Week)
 
 output %>%
   filter(Player %in% Elite) %>%
   select(Week, Ranking, Player) %>%
   ggplot(mapping = aes(x = Week, y = Ranking, colour = Player)) +
-  geom_smooth(se = F)+
-  scale_y_reverse()+
-  ylim(100,1)+
-  # xlim(GOD_start, NA) +
+  geom_smooth(se = F) +
+  scale_y_reverse() +
+  ylim(100, 1) +
+  geom_vline(xintercept = GOD_start, colour = "red") +
+  geom_hline(yintercept = 2) +
   theme(legend.position = "bottom")
